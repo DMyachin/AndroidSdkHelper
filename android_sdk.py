@@ -35,7 +35,7 @@ def _path_checker(path: str, obj_type: str, raise_exception=True) -> bool:
 
 
 class AndroidSdk(object):
-    def __init__(self, path=None, auto_set=None, select_last=True):
+    def __init__(self, path=None, auto_set=None, select_last=True) -> None:
         self.__util_name = {'adb': 'adb', 'aapt': 'aapt', 'zipalign': 'zipalign', 'emulator': 'emulator'}
         if os.name == 'nt':
             for key in self.__util_name:
