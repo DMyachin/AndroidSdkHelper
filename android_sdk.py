@@ -35,9 +35,9 @@ def _path_checker(path: str, obj_type: str, raise_exception=True) -> bool:
 
 
 class AndroidSdk(object):
-    def __init__(self, path=None, auto_set=False, select_last=True):
+    def __init__(self, path=None, auto_set=None, select_last=True):
         self.__util_name = {'adb': 'adb', 'aapt': 'aapt', 'zipalign': 'zipalign', 'emulator': 'emulator'}
-        if os.name('nt'):
+        if os.name == 'nt':
             for key in self.__util_name:
                 self.__util_name[key] = self.__util_name.get(key) + '.exe'
 
@@ -49,27 +49,30 @@ class AndroidSdk(object):
         self.__select_last = select_last
 
         if path:
-            self.set_sdk(path, auto_set)
-            if auto_set:
-                self.__auto_set()
+            if auto_set is None:
+                auto_set = []
+            if isinstance(auto_set, list):
+                self.set_sdk(path, auto_set)
+            else:
+                raise AttributeError('Auto_set must be list type')
 
-    def set_sdk(self, path: str, auto_set=False) -> None:
+    def set_sdk(self, path: str, auto_set: list) -> None:
         if _path_checker(path, "dir"):
             self.__sdk = path
             if auto_set:
-                self.__auto_autoset()
+                self.__auto_set(auto_set)
 
     def __get_build_tools_dir(self) -> str:
         expected_build_tools = os.path.join(self.__sdk, 'build-tools')
         if _path_checker(expected_build_tools, "dir"):
             internal_dirs = sorted(os.listdir(expected_build_tools))
-            if not internal_dirs == 0:
+            if not internal_dirs:
                 raise OSError("Build tools not installed")
             elif len(internal_dirs) == 1:
-                return expected_build_tools
+                return os.path.join(expected_build_tools, internal_dirs)
             else:
                 if self.__select_last:
-                    return expected_build_tools
+                    return os.path.join(expected_build_tools, internal_dirs[-1])
                 else:
                     raise ValueError("Build tools has different versions")
 
@@ -126,12 +129,20 @@ class AndroidSdk(object):
     def get_emulator(self) -> str:
         return self.__emulator
 
-    def __auto_set(self) -> None:
-        self.set_adb()
-        self.set_aapt()
-        self.set_zipalign()
-        self.set_emulator()
+    def __auto_set(self, set_list) -> None:
+        for name in set_list:
+            if name == 'adb':
+                self.set_adb()
+            elif name == 'aapt':
+                self.set_aapt()
+            elif name == 'zipalign':
+                self.set_zipalign()
+            elif name == 'emulator':
+                self.set_emulator()
+            else:
+                raise AttributeError('Unknown parameter: %s' % name)
 
 
 if __name__ == '__main__':
-    sdk = AndroidSdk("/home/umnik/Android/Sdk")
+    sdk = AndroidSdk("/home/umnik/Android/Sdk", auto_set=['adb'])
+    adb = sdk.get_adb()
