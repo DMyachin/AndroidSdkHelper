@@ -51,7 +51,7 @@ class AndroidSdk(object):
         if path:
             self.set_sdk(path, auto_set)
             if auto_set:
-                self.__auto_auto_set()
+                self.__auto_set()
 
     def set_sdk(self, path: str, auto_set=False) -> None:
         if _path_checker(path, "dir"):
@@ -126,7 +126,7 @@ class AndroidSdk(object):
     def get_emulator(self) -> str:
         return self.__emulator
 
-    def __auto_auto_set(self) -> None:
+    def __auto_set(self) -> None:
         self.set_adb()
         self.set_aapt()
         self.set_zipalign()
