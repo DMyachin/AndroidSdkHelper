@@ -4,7 +4,7 @@
 import os
 
 
-def _path_checker(path: str, obj_type: str, raise_exception=True) -> bool:
+def _path_checker(path: str, obj_type: str, raise_exception: bool=True) -> bool:
     if not isinstance(raise_exception, bool):
         raise AttributeError('Parameter "raise_exception" must be bool')
 
@@ -35,7 +35,7 @@ def _path_checker(path: str, obj_type: str, raise_exception=True) -> bool:
 
 
 class AndroidSdk(object):
-    def __init__(self, path=None, auto_set=None, select_last=True) -> None:
+    def __init__(self, path: str=None, auto_set: list=None, select_last: bool=True) -> None:
         self.__util_name = {'adb': 'adb', 'aapt': 'aapt', 'zipalign': 'zipalign', 'emulator': 'emulator'}
         if os.name == 'nt':
             for key in self.__util_name:
@@ -79,7 +79,7 @@ class AndroidSdk(object):
     def get_sdk(self) -> str:
         return self.__sdk
 
-    def set_adb(self, path=None) -> None:
+    def set_adb(self, path: str=None) -> None:
         if path:
             if _path_checker(path, "file"):
                 self.__adb = path
@@ -91,7 +91,7 @@ class AndroidSdk(object):
     def get_adb(self) -> str:
         return self.__adb
 
-    def set_aapt(self, path=None) -> None:
+    def set_aapt(self, path: str=None) -> None:
         if path:
             if _path_checker(path, 'file'):
                 self.__aapt = path
@@ -104,7 +104,7 @@ class AndroidSdk(object):
     def get_aapt(self) -> str:
         return self.__aapt
 
-    def set_zipalign(self, path=None) -> None:
+    def set_zipalign(self, path: str=None) -> None:
         if path:
             if _path_checker(path, "file"):
                 self.__zipalign = path
@@ -117,7 +117,7 @@ class AndroidSdk(object):
     def get_zipalign(self) -> str:
         return self.__zipalign
 
-    def set_emulator(self, path=None) -> None:
+    def set_emulator(self, path: str=None) -> None:
         if path:
             if _path_checker(path, 'file'):
                 self.__emulator = path
@@ -129,7 +129,7 @@ class AndroidSdk(object):
     def get_emulator(self) -> str:
         return self.__emulator
 
-    def __auto_set(self, set_list) -> None:
+    def __auto_set(self, set_list: list) -> None:
         for name in set_list:
             if name == 'adb':
                 self.set_adb()
