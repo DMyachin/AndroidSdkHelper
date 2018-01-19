@@ -52,7 +52,7 @@ class AndroidSdk(object):
             if auto_set is None:
                 auto_set = []
             if isinstance(auto_set, list):
-                self.set_sdk(path, auto_set)
+                self.set_sdk(os.path.expandvars(path), auto_set)
             else:
                 raise AttributeError('Auto_set must be list type')
 
