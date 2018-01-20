@@ -59,7 +59,7 @@ def _get_device_descriptions(args: list) -> dict:
 
 
 class AndroidAdb(object):
-    def __init__(self, path: str, exceptions: bool=False) -> None:
+    def __init__(self, path: str, exceptions: bool = False) -> None:
         """
         Получаем adb и работаем с ним
 
@@ -111,9 +111,9 @@ class AndroidAdb(object):
         """
         self.__device = serial
 
-    def install(self, apk_file: str, serial: str=None, replace: bool=False, downgrade: bool=False,
+    def install(self, apk_file: str, serial: str = None, replace: bool = False, downgrade: bool = False,
                 permissions: bool = False, auto_permissions: str = None, allow_test: bool = True,
-                sdcard: bool=False) -> dict:
+                sdcard: bool = False) -> dict:
         """
         Установить apk файл на устройство
 
@@ -206,11 +206,12 @@ class AndroidAdb(object):
                 self.__logcat.terminate()
             self.__logcat = None
 
-    def read_logcat(self, timeout: int = 2) -> list:
+    def read_logcat(self, timeout: int = 2, stop: bool = False) -> list:
         """
         Прочесть, чего там в логкате накопилось к этому времени
 
         :param timeout: сколько секунд ещё дать, чтобы данные гарантированно попали в PIPE. Ну так, чисто на всякий
+        :param stop: останавливать поток логката автоматически, если не хотите вручную вызывать метод остановки
          случай
         :return: список строк, по которому можете итерироваться как Гвидо на душу положит
         """
@@ -224,6 +225,8 @@ class AndroidAdb(object):
             self.__logcat.terminate()
             out, err = self.__logcat.communicate()
         finally:
+            if stop:
+                self.stop_logcat()
             if out:
                 out = _prepare_output(out)
                 return out
