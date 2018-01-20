@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import subprocess
-
 import os
-
 import android_sdk
 from enum import Enum, unique
 
@@ -11,7 +9,7 @@ from enum import Enum, unique
 @unique
 class Mode(Enum):
     INSTALL = "Installation"
-    UNINSTALL = "Uninstallation"
+    UNINSTALL = "Uninstalling"
 
 
 def _prepare_output(raw_output: bytes) -> list:
@@ -22,9 +20,13 @@ def _prepare_output(raw_output: bytes) -> list:
     return output
 
 
-def _execute_command(args: list) -> list:
-    raw_output = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    return _prepare_output(raw_output.stdout)
+def _execute_command(args: list, output: bool = True) -> list:
+    if output:
+        raw_output = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        return _prepare_output(raw_output.stdout)
+    else:
+        subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return []
 
 
 def _get_device_descriptions(args: list) -> dict:
@@ -39,6 +41,7 @@ class AndroidAdb(object):
     def __init__(self, path: str, exceptions: bool=False) -> None:
         self.__adb = os.path.expandvars(path)
         self.__device = None
+        self.__logcat = None
         self.__exceptions = exceptions
 
     def get_devices(self) -> list:
@@ -84,20 +87,76 @@ class AndroidAdb(object):
             command.append('-s')
         command.append(apk_file)
 
-        output = self.__execute_adb_command(*command, serial=serial)
+        output = self.__execute_adb_run(*command, serial=serial)
         return self.__check_install_remove(output, Mode.INSTALL)
 
     def uninstall(self, package: str) -> dict:
-        output = self.__execute_adb_command('uninstall', package)
+        output = self.__execute_adb_run('uninstall', package)
         return self.__check_install_remove(output, Mode.UNINSTALL)
 
-    def __execute_adb_command(self, *args, **kwargs) -> list:
+    def dump_logcat(self, log_format: str = 'threadtime') -> list:
+        self.__check_logcat()
+        command = ['logcat', '-d']
+        if log_format:
+            command.extend(['-v', log_format])
+        return self.__execute_adb_run(*command)
+
+    def clear_logcat(self) -> None:
+        self.__check_logcat()
+        self.__execute_adb_run('logcat', '-c', output=False)
+
+    def start_logcat(self, clear: bool = True, log_format: str = 'threadtime') -> None:
+        self.__check_logcat()
+        if clear:
+            self.__check_logcat()
+        command = []
+        if log_format:
+            command.extend(['-v', log_format])
+        return self.__execute_adb_popen('logcat', *command)
+
+    def stop_logcat(self) -> None:
+        if self.__logcat.poll is not None:
+            self.__logcat.terminate()
+        self.__logcat = None
+
+    def read_logcat(self, timeout: int = 2) -> list:
+        out = b''
+        if self.__logcat is None:
+            if self.__exceptions:
+                raise RuntimeError('Unexpected reading logcat but it not works')
+        try:
+            out, err = self.__logcat.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            self.__logcat.terminate()
+            out, err = self.__logcat.communicate()
+        finally:
+            if out:
+                out = _prepare_output(out)
+                return out
+            else:
+                return []
+        # output = self.__logcat.stdout.read()
+        # if output:
+        #     output = _prepare_output(output)
+        #     return output
+        # else:
+        #     return []
+
+    def __execute_adb_popen(self, *args, **kwargs) -> None:
         command = [self.__adb]
         serial = kwargs.get('serial', self.__device)
         if serial is not None:
             command.extend(['-s', serial])
         command.extend([*args])
-        return _execute_command(command)
+        self.__logcat = subprocess.Popen(command, stdout=subprocess.PIPE)
+
+    def __execute_adb_run(self, *args, output: bool = True, **kwargs) -> list:
+        command = [self.__adb]
+        serial = kwargs.get('serial', self.__device)
+        if serial is not None:
+            command.extend(['-s', serial])
+        command.extend([*args])
+        return _execute_command(command, output=output)
 
     def __check_install_remove(self, output: list, command: Mode) -> dict:
         command_result = {"Message": output[-1].split(' ')[-1]}
@@ -109,23 +168,60 @@ class AndroidAdb(object):
             command_result["Success"] = False
         return command_result
 
+    def __check_logcat(self) -> None:
+        if self.__logcat is not None:
+            if self.__logcat.poll() is not None:
+                if self.__exceptions:
+                    raise RuntimeError('Previous logcat still working')
+                else:
+                    UserWarning('Previous logcat still working and will be stops')
+                    self.__logcat.terminate()
+            else:
+                UserWarning('Unexpected self.__logcat condition')
+
 
 if __name__ == '__main__':
-    sdk = android_sdk.AndroidSdk(path='%ANDROID_HOME%', auto_set=['adb'])
+    test_sdk_path = '/home/umnik/Android/Sdk'
+    sdk = android_sdk.AndroidSdk(test_sdk_path, auto_set=['adb'])
     adb = AndroidAdb(sdk.get_adb())
     device = adb.get_devices()[0].get('serial')
     print("Device:", device)
     adb.set_device(device)
 
-    res = adb.install(r'D:\!\SDK_Android\KL_Mobile_SDK_Android_Example_5.2.0.601_Release.apk', replace=True)
+    adb.start_logcat()
+    test_apk = r'/home/umnik/Documents/Work/Android/CLSDKExample/app/build/outputs/apk/app-debug.apk'
+    test_package = 'com.kaspersky.clsdkexample'
+    res = adb.install(test_apk, replace=True)
     print("App is installed:", res)
-    res = adb.install(r'D:\!\SDK_Android\KL_Mobile_SDK_Android_Example_5.2.0.601_Release.apk', replace=True)
+    res = adb.install(test_apk, replace=True)
     print("App is installed:", res)
-    res = adb.uninstall('com.kavsdkexample')
+    res = adb.uninstall(test_package)
     print("App is removed:", res)
-    res = adb.install(r'D:\!\SDK_Android\KL_Mobile_SDK_Android_Example_5.2.0.601_Release.apk')
+    res = adb.install(test_apk)
     print("App is installed:", res)
-    res = adb.install(r'D:\!\SDK_Android\KL_Mobile_SDK_Android_Example_5.2.0.601_Release.apk')
+    res = adb.install(test_apk)
     print("App is installed:", res)
-    res = adb.uninstall('com.kavsdkexample')
+    res = adb.uninstall(test_package)
     print("App is removed:", res)
+    logcat = adb.read_logcat()
+    for line in logcat:
+        print(line)
+
+    print('')
+    print('=' * 10)
+    adb.clear_logcat()
+    res = adb.install(test_apk, replace=True)
+    print("App is installed:", res)
+    res = adb.install(test_apk, replace=True)
+    print("App is installed:", res)
+    res = adb.uninstall(test_package)
+    print("App is removed:", res)
+    res = adb.install(test_apk)
+    print("App is installed:", res)
+    res = adb.install(test_apk)
+    print("App is installed:", res)
+    res = adb.uninstall(test_package)
+    print("App is removed:", res)
+    logcat = adb.dump_logcat()
+    for line in logcat:
+        print(line)
