@@ -225,5 +225,8 @@ class AndroidSdk(object):
 
 
 if __name__ == '__main__':
-    sdk = AndroidSdk("/home/umnik/Android/Sdk", auto_set=['adb'])
+    sdk = AndroidSdk("/home/umnik/Android/Sdk", auto_set=['adb', 'aapt'])
     adb = sdk.get_adb()
+    print(adb)
+    aapt = sdk.get_aapt()
+    print(aapt)
