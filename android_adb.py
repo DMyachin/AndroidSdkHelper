@@ -312,14 +312,14 @@ class AndroidAdb(object):
                         self.__logcat.send_signal(SIGTERM)
                         self.__logcat = None
                         return False
-                    UserWarning('Previous logcat still working and will be stops')
+                    # UserWarning('Previous logcat still working and will be stops')
                     return True
             else:
                 if auto_kill:
                     self.__logcat = None
                     return False
                 else:
-                    UserWarning('Unexpected self.__logcat condition')
+                    # UserWarning('Unexpected self.__logcat condition')
                     return True
 
     def get_android_version(self) -> str:
@@ -357,7 +357,7 @@ class AndroidAdb(object):
         :param param: название property, типа 'ro.product.locale.language'
         :return: строка со значением. Либо пустая строка, если есть проблемы
         """
-        prop = self.__execute_adb_run('shell', 'getprop', param)
+        prop = self.__execute_adb_shell_run('getprop', param)
         if prop:
             return prop[0]
         else:
@@ -380,13 +380,84 @@ class AndroidAdb(object):
             else:
                 package = self.__package
 
-        command = ['shell', 'am', 'start' '-n', package + '/' + activity]
+        command = ['am', 'start' '-n', package + '/' + activity]
         command.extend(args)
-        self.__execute_adb_run(command, output=False)
+        self.__execute_adb_shell_run(command, output=False)
+
+    def push(self, source: list, destination: str, sync: bool = False) -> list:
+        """
+        Закинуть файлы и каталоги на устройство
+
+        :param source: список файлов и каталогов. Структура каталогов будет сохранена
+        :param destination: куда пушим
+        :param sync: пушить только те файлы, которых не хватает на устройстве и те, которые на устройстве более старые
+        :return: список строк, по которым можно понять, стянулись ли файлы или пропущены
+        """
+        command = ['push', *source, destination]
+        if sync:
+            command.append('--sync')
+
+        adb_lines = self.__execute_adb_run(*command)
+        result = []
+        for res_line in adb_lines:
+            if '%]' not in res_line:
+                result.append(res_line)
+        return result
+
+    def pull(self, source: list, destination: str, save_time: bool = False) -> list:
+        """
+        Стянуть файлы и каталоги с устройства
+
+        :param source: откуда тянем
+        :param destination: директория, в которую заливаем. Если конечного пути нет, то он будет создан
+        :param save_time: сохранять ли даты файлов, как они значатся на устройстве
+        :return: список строк, по которым можно понять, стянулись ли файлы
+        """
+        if not os.path.exists(destination):
+            os.makedirs(destination)
+
+        command = ['pull', *source, destination]
+        if save_time:
+            command.append('-a')
+
+        adb_lines = self.__execute_adb_run(*command)
+        result = []
+        for res_line in adb_lines:
+            if '%]' not in res_line:
+                result.append(res_line)
+        return result
+
+    def remove(self, files: list, safe: bool = True) -> list:
+        """
+        Удалить на устройстве файлы и папки
+
+        :param safe: выполнять ли рекурсивное удаление. Если False, то -r проставлен не будет и вы не затрёте
+         по ошибке всю карту памяти из-за опечатки
+        :param files: список файлов и папок. Подстановочные символы разрешены
+        :return: если список не пустой, значит были какие-то проблемы. Можно понять, какие именно
+        """
+        command = ['rm']
+        if safe:
+            command.append('-f')
+        else:
+            command.append('-rf')
+        command.append(*files)
+
+        return self.__execute_adb_shell_run(*command)
+
+    def __execute_adb_shell_run(self, *args, output: bool = True) -> list:
+        """
+        Вызывает метод выполнения adb комманд. На себя берёт подстановку shell
+
+        :param args: аргументы
+        :param output: нужен ли выхлоп
+        :return: список строк
+        """
+        return self.__execute_adb_run('shell', *args, output=output)
 
 
 if __name__ == '__main__':
-    test_sdk_path = '/home/umnik/Android/Sdk'
+    test_sdk_path = '$ANDROID_HOME'
     sdk = android_sdk.AndroidSdk(test_sdk_path, auto_set=['adb'])
     adb = AndroidAdb(sdk.get_adb())
     device = adb.get_devices()[0]
@@ -398,53 +469,63 @@ if __name__ == '__main__':
         else:
             print('\t' + key + ':', device.get(key))
     adb.set_device(device.get('serial'))
+    #
+    # adb.start_logcat()
+    # test_apk = r'/home/umnik/Documents/Work/Android/CLSDKExample/app/build/outputs/apk/app-debug.apk'
+    # test_package = 'com.kaspersky.clsdkexample'
+    # res = adb.install(test_apk, replace=True)
+    # print("App is installed:", res)
+    # res = adb.install(test_apk, replace=True)
+    # print("App is installed:", res)
+    # res = adb.uninstall(test_package)
+    # print("App is removed:", res)
+    # res = adb.install(test_apk)
+    # print("App is installed:", res)
+    # res = adb.install(test_apk)
+    # print("App is installed:", res)
+    # res = adb.uninstall(test_package)
+    # print("App is removed:", res)
+    # logcat = adb.read_logcat()
+    # for line in logcat:
+    #     print(line)
+    # adb.stop_logcat()
+    #
+    # print('')
+    # print('=' * 10)
+    # adb.clear_logcat()
+    # res = adb.install(test_apk, replace=True)
+    # print("App is installed:", res)
+    # res = adb.install(test_apk, replace=True)
+    # print("App is installed:", res)
+    # res = adb.uninstall(test_package)
+    # print("App is removed:", res)
+    # res = adb.install(test_apk)
+    # print("App is installed:", res)
+    # res = adb.install(test_apk)
+    # print("App is installed:", res)
+    # res = adb.uninstall(test_package)
+    # print("App is removed:", res)
+    # logcat = adb.dump_logcat()
+    # for line in logcat:
+    #     print(line)
+    # print('')
+    # print('=' * 10)
+    #
+    # print('Android version:', adb.get_android_version())
+    # print('SDK version:', adb.get_sdk_version())
+    # print('Security patch:', adb.get_security_patch())
+    # print('')
+    # print('=' * 10)
 
-    adb.start_logcat()
-    test_apk = r'/home/umnik/Documents/Work/Android/CLSDKExample/app/build/outputs/apk/app-debug.apk'
-    test_package = 'com.kaspersky.clsdkexample'
-    res = adb.install(test_apk, replace=True)
-    print("App is installed:", res)
-    res = adb.install(test_apk, replace=True)
-    print("App is installed:", res)
-    res = adb.uninstall(test_package)
-    print("App is removed:", res)
-    res = adb.install(test_apk)
-    print("App is installed:", res)
-    res = adb.install(test_apk)
-    print("App is installed:", res)
-    res = adb.uninstall(test_package)
-    print("App is removed:", res)
-    logcat = adb.read_logcat()
-    for line in logcat:
-        print(line)
-    adb.stop_logcat()
+    # qq = adb.push(source=[r'D:\!\SDK_Android\install.cfg', r'D:\!\SDK_Android\install.sh', r'D:\!\SDK_Android\SKIP'],
+    #               destination='/sdcard/', sync=True)
+    #
+    # import pprint
+    # pprint.pprint(qq)
 
-    print('')
-    print('=' * 10)
-    adb.clear_logcat()
-    res = adb.install(test_apk, replace=True)
-    print("App is installed:", res)
-    res = adb.install(test_apk, replace=True)
-    print("App is installed:", res)
-    res = adb.uninstall(test_package)
-    print("App is removed:", res)
-    res = adb.install(test_apk)
-    print("App is installed:", res)
-    res = adb.install(test_apk)
-    print("App is installed:", res)
-    res = adb.uninstall(test_package)
-    print("App is removed:", res)
-    logcat = adb.dump_logcat()
-    for line in logcat:
-        print(line)
-    print('')
-    print('=' * 10)
+    # qq = adb.pull(source=['/sdcard/install.cfg', '/sdcard/install.sh',
+    #                       '/sdcard/SKIP/'], destination=r'D:\!!!!!\qqq', save_time=False)
+    #
+    # pprint.pprint(qq)
 
-    print('Android version:', adb.get_android_version())
-    print('SDK version:', adb.get_sdk_version())
-    print('Security patch:', adb.get_security_patch())
-    print('')
-    print('=' * 10)
-
-    adb.set_package(test_package)
-    adb.create_activity(['-a', 'test', '-e', 'key', 'value'])
+    # adb.remove(files=['/sdcard/install.cfg', '/sdcard/install.sh', '/sdcard/SKIP/'])
