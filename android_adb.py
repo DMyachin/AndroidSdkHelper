@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import subprocess
 import os
-from signal import SIGTERM
+import re
+import subprocess
+import time
+from enum import Enum, unique
 
 import android_sdk
-from enum import Enum, unique
 
 
 @unique
@@ -58,6 +59,39 @@ def _execute_command(args: list, output: bool = True) -> list:
 #         pair = arg.split(':')
 #         res[pair[0]] = pair[1]
 #     return res
+
+
+def __process_la(ok_strings: list) -> list:
+    pattern = re.compile('^([drwx-]*) +(\d*) *(\w+) +(\w+) *(\d*) +([\d\-]+) +([\d:]+) (.*)$')
+    result = []
+    description = {}
+    for string in ok_strings:
+        match = re.match(pattern, string)
+        if match is not None:
+            if not string.endswith('.'):
+                description['rights'] = match.group(1)
+                description['links'] = match.group(2)
+                description['owner'] = match.group(3)
+                description['group'] = match.group(4)
+                description['size'] = match.group(5)
+                description['date'] = match.group(6)
+                description['time'] = match.group(7)
+                description['name'] = match.group(8)
+                result.append(description)
+    return result
+
+
+def _parse_la(la_result: list) -> tuple:
+    errors = []
+    ok_strings = []
+    for la in la_result:
+        if la.endswith('Permission denied'):
+            errors.append(la[4:])
+        else:
+            ok_strings.append(la)
+    if ok_strings:
+        ok_strings = __process_la(ok_strings)
+    return ok_strings, errors
 
 
 class AndroidAdb(object):
@@ -114,6 +148,9 @@ class AndroidAdb(object):
         """
         self.__device = serial
 
+    def reconnect_device(self) -> None:
+        self.__execute_adb_run('reconnect')
+
     def install(self, apk_file: str, serial: str = None, replace: bool = False, downgrade: bool = False,
                 permissions: bool = False, auto_permissions: bool = False, allow_test: bool = True,
                 sdcard: bool = False) -> dict:
@@ -155,6 +192,21 @@ class AndroidAdb(object):
         output = self.__execute_adb_run(*command, serial=serial)
         return self.__check_install_remove(output, Mode.INSTALL)
 
+    def is_installed(self, package: str = None) -> bool:
+        command = ['list', 'packages']
+        if package is None:
+            if self.__package is not None:
+                package = self.__package
+
+        pm_lines = self.execute_pm(*command)
+        if 'package:' + package in pm_lines:
+            return True
+        else:
+            return False
+
+    def execute_pm(self, *args, output: bool = True) -> list:
+        return self.__execute_adb_shell_run('pm', *args, output=output)
+
     def set_package(self, package: str) -> None:
         """
         Задать имя пакета по умолчанию. Если какой-то метод просит, но не требует, передавать имя пакета, то, если
@@ -192,7 +244,9 @@ class AndroidAdb(object):
         command = ['logcat', '-d']
         if log_format:
             command.extend(['-v', log_format])
-        return self.__execute_adb_run(*command)
+        results = self.__execute_adb_run(*command)
+        self.stop_logcat()
+        return results
 
     def clear_logcat(self) -> None:
         """
@@ -212,7 +266,7 @@ class AndroidAdb(object):
         """
         self.__check_logcat()
         if clear:
-            self.__check_logcat()
+            self.clear_logcat()
         command = []
         if log_format:
             command.extend(['-v', log_format])
@@ -226,10 +280,11 @@ class AndroidAdb(object):
         """
         if self.__logcat is not None:
             if self.__logcat.poll is not None:
-                self.__logcat.send_signal(SIGTERM)
-            self.__logcat = None
+                self.__logcat.terminate()
+                time.sleep(2)
+        self.__logcat = None
 
-    def read_logcat(self) -> list:
+    def read_logcat(self, timeout: int = None) -> list:
         """
         Прочесть, чего там в логкате накопилось к этому времени и убить поток.
 
@@ -239,14 +294,15 @@ class AndroidAdb(object):
             if self.__exceptions:
                 raise RuntimeError('Reading logcat but it not works')
 
-        self.__logcat.send_signal(SIGTERM)
-        output = self.__logcat.stdout.read()
+        if timeout is None:
+            timeout = 3
+        try:
+            out, err = self.__logcat.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            self.__logcat.terminate()
+            out, err = self.__logcat.communicate()
         self.stop_logcat()
-        if output:
-            output = _prepare_output(output)
-            return output
-        else:
-            return []
+        return _prepare_output(out)
 
     def __execute_adb_popen(self, *args, **kwargs) -> None:
         """
@@ -275,7 +331,8 @@ class AndroidAdb(object):
         :return: выхлоп в виде списка строк
         """
         command = [self.__adb]
-        serial = kwargs.get('serial', self.__device)
+        # serial = kwargs.get('serial', self.__device)
+        serial = self.__device
         if serial is not None:
             command.extend(['-s', serial])
         command.extend([*args])
@@ -289,13 +346,15 @@ class AndroidAdb(object):
         :param command: енамчик, по которому можно понять, это была установка или удаление
         :return: словарь {'Success': bool, 'Message': str}. 'Message' есть только в случае проблем установки
         """
-        command_result = {"Message": output[-1].split(' ')[-1]}
-        if output[-1] == 'Success':
-            command_result["Success"] = True
-        else:
-            if self.__exceptions:
-                raise RuntimeError("%s error: %s" % (command.value, command_result.get("Message")))
-            command_result["Success"] = False
+        command_result = {}
+        for line in output:
+            if 'Success' in line:
+                command_result["Success"] = True
+            elif 'Failure' in line:
+                command_result = {"Message": line.split(' ')[-1]}
+                if self.__exceptions:
+                    raise RuntimeError("%s error: %s" % (command.value, command_result.get("Message")))
+                command_result["Success"] = False
         return command_result
 
     def __check_logcat(self, auto_kill: bool = False) -> bool:
@@ -309,8 +368,7 @@ class AndroidAdb(object):
                     raise RuntimeError('Previous logcat still working')
                 else:
                     if auto_kill:
-                        self.__logcat.send_signal(SIGTERM)
-                        self.__logcat = None
+                        self.stop_logcat()
                         return False
                     # UserWarning('Previous logcat still working and will be stops')
                     return True
@@ -380,9 +438,9 @@ class AndroidAdb(object):
             else:
                 package = self.__package
 
-        command = ['am', 'start' '-n', package + '/' + activity]
+        command = ['am', 'start', '-n', package + '/' + activity]
         command.extend(args)
-        self.__execute_adb_shell_run(command, output=False)
+        self.__execute_adb_shell_run(*command, output=False)
 
     def push(self, source: list, destination: str, sync: bool = False) -> list:
         """
@@ -397,6 +455,7 @@ class AndroidAdb(object):
         if sync:
             command.append('--sync')
 
+        self.mkdir(destination)
         adb_lines = self.__execute_adb_run(*command)
         result = []
         for res_line in adb_lines:
@@ -445,7 +504,7 @@ class AndroidAdb(object):
 
         return self.__execute_adb_shell_run(*command)
 
-    def __execute_adb_shell_run(self, *args, output: bool = True) -> list:
+    def __execute_adb_shell_run(self, *args, from_package: bool = False, output: bool = True) -> list:
         """
         Вызывает метод выполнения adb комманд. На себя берёт подстановку shell
 
@@ -453,7 +512,24 @@ class AndroidAdb(object):
         :param output: нужен ли выхлоп
         :return: список строк
         """
-        return self.__execute_adb_run('shell', *args, output=output)
+        command = ['shell', *args]
+        if from_package:
+            command.append(self.__package)
+        return self.__execute_adb_run(*command, output=output)
+
+    def mkdir(self, destination: str) -> None:
+        command = ['mkdir', '-p', destination]
+        self.__execute_adb_shell_run(*command, output=False)
+
+    def get_ls_info(self, target: str, from_package: bool = False) -> tuple:
+        files_info = None
+        files = self.__execute_adb_shell_run('ls', '-la', target, from_package=from_package)
+        if files:
+            files_info = _parse_la(files)
+        if files_info:
+            return files_info
+        else:
+            return None, None
 
 
 if __name__ == '__main__':
@@ -526,6 +602,9 @@ if __name__ == '__main__':
     # qq = adb.pull(source=['/sdcard/install.cfg', '/sdcard/install.sh',
     #                       '/sdcard/SKIP/'], destination=r'D:\!!!!!\qqq', save_time=False)
     #
-    # pprint.pprint(qq)
+    # pprint.pprint (qq)
 
     # adb.remove(files=['/sdcard/install.cfg', '/sdcard/install.sh', '/sdcard/SKIP/'])
+    f_lst = adb.get_ls_info('"/sdcard/.1 2 3"')
+    # for i in f_lst:
+    #     print(i)
