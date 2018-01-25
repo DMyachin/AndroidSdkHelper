@@ -15,6 +15,51 @@ class Mode(Enum):
     UNINSTALL = "Uninstalling"
 
 
+class AdbError(Exception):
+    def __init__(self) -> None:
+        pass
+
+
+class DeviceNotFoundError(AdbError):
+    def __init__(self, message: str) -> None:
+        self.message = message
+
+
+class PackageManagerError(AdbError):
+    def __init__(self) -> None:
+        pass
+
+
+class PackageNameError(PackageManagerError):
+    def __init__(self, message: str) -> None:
+        self.message = message
+
+
+class InstallRemoveError(PackageManagerError):
+    def __init__(self, message: str) -> None:
+        self.message = message
+
+
+class LogcatError(AdbError):
+    def __init__(self) -> None:
+        pass
+
+
+class LogcatNotDefinedError(LogcatError):
+    def __init__(self, message: str) -> None:
+        self.message = message
+
+
+class LogcatWorkingError(LogcatError):
+    def __init__(self, message: str) -> None:
+        self.message = message
+
+
+class AndroidEnvironmentError(AdbError):
+    def __init__(self, message: str) -> None:
+        self.message = message
+
+
 def _prepare_output(raw_output: bytes) -> list:
     """
     Сделать из байтов читабельный текст. Будет проведено декодирование, затем разделение строк, затем каждрая строка
@@ -45,20 +90,6 @@ def _execute_command(args: list, output: bool = True) -> list:
     else:
         subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return []
-
-
-# def _get_device_descriptions(args: list) -> dict:
-#     """
-#     Нужен для того, чтобы из описания устройства получить словарь. Забейте
-#
-#     :param args:
-#     :return:
-#     """
-#     res = {}
-#     for arg in args:
-#         pair = arg.split(':')
-#         res[pair[0]] = pair[1]
-#     return res
 
 
 def __process_la(ok_strings: list) -> list:
@@ -94,19 +125,35 @@ def _parse_la(la_result: list) -> tuple:
     return ok_strings, errors
 
 
+def _check_install_remove(output: list, command: Mode) -> dict:
+    """
+    Проверяем, успешно ли прошла установка/удаление
+
+    :param output: выхлоп команды install/uninstall в виде списка строк
+    :param command: енамчик, по которому можно понять, это была установка или удаление
+    :return: словарь {'Success': bool, 'Message': str}. 'Message' есть только в случае проблем установки
+    """
+    command_result = {}
+    for line in output:
+        if 'Success' in line:
+            command_result["Success"] = True
+        elif 'Failure' in line:
+            command_result = {"Message": line.split(' ')[-1]}
+            raise InstallRemoveError(command.value + ' error: ' + command_result["Message"])
+    return command_result
+
+
 class AndroidAdb(object):
-    def __init__(self, path: str, exceptions: bool = False) -> None:
+    def __init__(self, path: str) -> None:
         """
         Получаем adb и работаем с ним
 
         :param path: путь к adb. Его можно спросить у AndroidSdk()
-        :param exceptions: Выбрасывать ли исключения, если что-то идёт сильно не так
         """
         self.__adb = os.path.expandvars(path)
         self.__device = None
         self.__logcat = None
         self.__package = None
-        self.__exceptions = exceptions
 
     def get_devices(self) -> list:
         """
@@ -134,8 +181,7 @@ class AndroidAdb(object):
                 device_dict['description'] = d_desc
                 devices.append(device_dict)
         if not devices:
-            if self.__exceptions:
-                raise RuntimeError("Devices not found")
+            raise DeviceNotFoundError('Devices not found')
         return devices
 
     def set_device(self, serial: str) -> None:
@@ -190,13 +236,15 @@ class AndroidAdb(object):
         command.append(apk_file)
 
         output = self.__execute_adb_run(*command, serial=serial)
-        return self.__check_install_remove(output, Mode.INSTALL)
+        return _check_install_remove(output, Mode.INSTALL)
 
     def is_installed(self, package: str = None) -> bool:
         command = ['list', 'packages']
         if package is None:
             if self.__package is not None:
                 package = self.__package
+            else:
+                raise PackageNameError('Package name not defined')
 
         pm_lines = self.execute_pm(*command)
         if 'package:' + package in pm_lines:
@@ -205,7 +253,7 @@ class AndroidAdb(object):
             return False
 
     def execute_pm(self, *args, output: bool = True) -> list:
-        return self.__execute_adb_shell_run('pm', *args, output=output)
+        return self.adb_shell_run('pm', *args, output=output)
 
     def set_package(self, package: str) -> None:
         """
@@ -226,12 +274,9 @@ class AndroidAdb(object):
         if not package:
             package = self.__package
             if not package:
-                if self.__exceptions:
-                    raise ValueError('Need package name')
-                else:
-                    package = 'null'
+                raise PackageNameError('Package name not defined')
         output = self.__execute_adb_run('uninstall', package)
-        return self.__check_install_remove(output, Mode.UNINSTALL)
+        return _check_install_remove(output, Mode.UNINSTALL)
 
     def dump_logcat(self, log_format: str = 'threadtime') -> list:
         """
@@ -291,8 +336,7 @@ class AndroidAdb(object):
         :return: список строк, по которому можете итерироваться как Гвидо на душу положит
         """
         if self.__logcat is None:
-            if self.__exceptions:
-                raise RuntimeError('Reading logcat but it not works')
+            raise LogcatNotDefinedError('Logcat not defined')
 
         if timeout is None:
             timeout = 3
@@ -303,6 +347,46 @@ class AndroidAdb(object):
             out, err = self.__logcat.communicate()
         self.stop_logcat()
         return _prepare_output(out)
+
+    def read_logcat_for_line(self, end_line: str, start_line: str = None,
+                             timeout: int = None, decode: str = 'utf-8') -> list:
+        if self.__logcat is None:
+            raise LogcatNotDefinedError('Logcat not defined')
+
+        start_time = time.time()
+        if not timeout:
+            timeout = float('inf')
+
+        founded = False
+        result = []
+        if start_line is not None:
+            can_start = False
+        else:
+            can_start = True
+
+        while not founded:
+            if time.time() - start_time > timeout:
+                break
+            else:
+                log_str = self.__logcat.stdout.readline().decode(decode).strip()
+                if end_line in log_str:
+                    founded = True
+
+            if can_start:
+                if log_str not in ('', '\n', '\r'):
+                    result.append(log_str)
+            else:
+                if start_line in log_str:
+                    result.append(log_str)
+                    can_start = True
+
+        if founded:
+            self.stop_logcat()
+            return result
+        else:
+            self.stop_logcat()
+            raise TimeoutError('Timeout for reading logcat')
+
 
     def __execute_adb_popen(self, *args, **kwargs) -> None:
         """
@@ -338,25 +422,6 @@ class AndroidAdb(object):
         command.extend([*args])
         return _execute_command(command, output=output)
 
-    def __check_install_remove(self, output: list, command: Mode) -> dict:
-        """
-        Проверяем, успешно ли прошла установка/удаление
-
-        :param output: выхлоп команды install/uninstall в виде списка строк
-        :param command: енамчик, по которому можно понять, это была установка или удаление
-        :return: словарь {'Success': bool, 'Message': str}. 'Message' есть только в случае проблем установки
-        """
-        command_result = {}
-        for line in output:
-            if 'Success' in line:
-                command_result["Success"] = True
-            elif 'Failure' in line:
-                command_result = {"Message": line.split(' ')[-1]}
-                if self.__exceptions:
-                    raise RuntimeError("%s error: %s" % (command.value, command_result.get("Message")))
-                command_result["Success"] = False
-        return command_result
-
     def __check_logcat(self, auto_kill: bool = False) -> bool:
         """
         Проверяем, а не использует ли у нас логкат сейчас.
@@ -364,21 +429,18 @@ class AndroidAdb(object):
         """
         if self.__logcat is not None:
             if self.__logcat.poll() is not None:
-                if self.__exceptions:
-                    raise RuntimeError('Previous logcat still working')
+                if auto_kill:
+                    self.stop_logcat()
+                    return False
                 else:
-                    if auto_kill:
-                        self.stop_logcat()
-                        return False
-                    # UserWarning('Previous logcat still working and will be stops')
-                    return True
+                    raise LogcatWorkingError('Previous logcat still working')
             else:
                 if auto_kill:
                     self.__logcat = None
                     return False
                 else:
-                    # UserWarning('Unexpected self.__logcat condition')
                     return True
+        return False
 
     def get_android_version(self) -> str:
         """
@@ -415,7 +477,7 @@ class AndroidAdb(object):
         :param param: название property, типа 'ro.product.locale.language'
         :return: строка со значением. Либо пустая строка, если есть проблемы
         """
-        prop = self.__execute_adb_shell_run('getprop', param)
+        prop = self.adb_shell_run('getprop', param)
         if prop:
             return prop[0]
         else:
@@ -431,16 +493,14 @@ class AndroidAdb(object):
         """
         if not package:
             if self.__package is None:
-                if self.__exceptions:
-                    raise ValueError('Package was not set')
-                else:
-                    package = 'null'
+                raise PackageNameError('Package was not set')
             else:
                 package = self.__package
 
         command = ['am', 'start', '-n', package + '/' + activity]
-        command.extend(args)
-        self.__execute_adb_shell_run(*command, output=False)
+        if args:
+            command.extend(args)
+        self.adb_shell_run(*command, output=False)
 
     def push(self, source: list, destination: str, sync: bool = False) -> list:
         """
@@ -502,34 +562,50 @@ class AndroidAdb(object):
             command.append('-rf')
         command.append(*files)
 
-        return self.__execute_adb_shell_run(*command)
+        return self.adb_shell_run(*command)
 
-    def __execute_adb_shell_run(self, *args, from_package: bool = False, output: bool = True) -> list:
+    def adb_shell_run(self, *args, from_package: bool = False, check_android: bool = True, output: bool = True) -> list:
         """
         Вызывает метод выполнения adb комманд. На себя берёт подстановку shell
 
+        :param from_package: выполнить команду от имени пакета. Только для Android 5+. Может не работать на Samsung.
+        Для автоматической проверки, возможна ли операция, используйте параметр check_android.
+        :param check_android: проверить, подходит ли версия Android для выполенния операции от имени пакета
         :param args: аргументы
         :param output: нужен ли выхлоп
         :return: список строк
         """
-        command = ['shell', *args]
+        command = ['shell']
         if from_package:
-            command.append(self.__package)
+            if check_android:
+                if not self.get_sdk_version() > 20:
+                    raise AndroidEnvironmentError('Current API level is %d but 21 or above need' %
+                                                  self.get_sdk_version())
+            command.extend(['run-as', self.__package])
+        command.extend(args)
         return self.__execute_adb_run(*command, output=output)
 
     def mkdir(self, destination: str) -> None:
         command = ['mkdir', '-p', destination]
-        self.__execute_adb_shell_run(*command, output=False)
+        self.adb_shell_run(*command, output=False)
 
-    def get_ls_info(self, target: str, from_package: bool = False) -> tuple:
+    def get_full_ls_info(self, target: str, from_package: bool = False) -> tuple:
         files_info = None
-        files = self.__execute_adb_shell_run('ls', '-la', target, from_package=from_package)
+        files = self.adb_shell_run('ls', '-la', target, from_package=from_package)
         if files:
             files_info = _parse_la(files)
         if files_info:
             return files_info
         else:
             return None, None
+
+    def get_file_ls_info(self, target: str, from_package: bool = False) -> dict:
+        file_info = self.get_full_ls_info(target, from_package)
+        if file_info[0]:
+            return file_info[0][0]
+        else:
+            if file_info[0][1]:
+                return {'reply': file_info[0][1]}
 
 
 if __name__ == '__main__':
@@ -605,6 +681,6 @@ if __name__ == '__main__':
     # pprint.pprint (qq)
 
     # adb.remove(files=['/sdcard/install.cfg', '/sdcard/install.sh', '/sdcard/SKIP/'])
-    f_lst = adb.get_ls_info('"/sdcard/.1 2 3"')
+    f_lst = adb.get_full_ls_info('"/sdcard/.1 2 3"')
     # for i in f_lst:
     #     print(i)
