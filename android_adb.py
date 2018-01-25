@@ -387,7 +387,6 @@ class AndroidAdb(object):
             self.stop_logcat()
             raise TimeoutError('Timeout for reading logcat')
 
-
     def __execute_adb_popen(self, *args, **kwargs) -> None:
         """
         Выполняем команды adb с переданными параметрами в отдельном треде

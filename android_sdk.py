@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
 import os
 
 
-def _path_checker(path: str, obj_type: str, raise_exception: bool=True) -> bool:
+def _path_checker(path: str, obj_type: str, raise_exception: bool = True) -> bool:
     """
     Проверяем переданные пути к фалам и папкам
 
@@ -44,7 +43,7 @@ def _path_checker(path: str, obj_type: str, raise_exception: bool=True) -> bool:
 
 
 class AndroidSdk(object):
-    def __init__(self, path: str=None, auto_set: list=None, select_last: bool=True) -> None:
+    def __init__(self, path: str = None, auto_set: list = None, select_last: bool = True) -> None:
         """
         Конструктор, чё тут ещё сказать
 
@@ -113,7 +112,7 @@ class AndroidSdk(object):
         """
         return self.__sdk
 
-    def set_adb(self, path: str=None) -> None:
+    def set_adb(self, path: str = None) -> None:
         """
         Задать путь к adb, если заранее не делали auto_set=['adb'], хотя вам и предлагали. Ну или если хотите
          его заменить на другой
@@ -136,7 +135,7 @@ class AndroidSdk(object):
         """
         return self.__adb
 
-    def set_aapt(self, path: str=None) -> None:
+    def set_aapt(self, path: str = None) -> None:
         """
         Задать путь к aapt, если заране не сделали auto_set=['aapt'], хотя вам и предлагали. Ну, либо вы хотите заменить
          его на другой
@@ -160,7 +159,7 @@ class AndroidSdk(object):
         """
         return self.__aapt
 
-    def set_zipalign(self, path: str=None) -> None:
+    def set_zipalign(self, path: str = None) -> None:
         """
         Задать путь к утилите zipalign, либо заменить на новый
 
@@ -183,7 +182,7 @@ class AndroidSdk(object):
         """
         return self.__zipalign
 
-    def set_emulator(self, path: str=None) -> None:
+    def set_emulator(self, path: str = None) -> None:
         """
         Задать путь к утилите emulator
 
