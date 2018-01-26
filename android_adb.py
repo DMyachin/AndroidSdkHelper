@@ -357,20 +357,21 @@ class AndroidAdb(object):
         if not timeout:
             timeout = float('inf')
 
-        founded = False
+        found = False
         result = []
         if start_line is not None:
             can_start = False
         else:
             can_start = True
 
-        while not founded:
+        while not found:
             if time.time() - start_time > timeout:
-                break
+                self.stop_logcat()
+                raise TimeoutError('Timeout for reading logcat')
             else:
                 log_str = self.__logcat.stdout.readline().decode(decode).strip()
                 if end_line in log_str:
-                    founded = True
+                    found = True
 
             if can_start:
                 if log_str not in ('', '\n', '\r'):
@@ -380,12 +381,45 @@ class AndroidAdb(object):
                     result.append(log_str)
                     can_start = True
 
-        if founded:
-            self.stop_logcat()
-            return result
+        self.stop_logcat()
+        return result
+
+    def read_logcat_for_lines(self, end_lines: list, start_lines: list = None, timeout: int = None,
+                              decode: str = 'utf-8') -> list:
+        if self.__logcat is None:
+            raise LogcatNotDefinedError('Logcat not defined')
+
+        start_time = time.time()
+
+        if start_lines:
+            pattern_start = re.compile('|'.join(start_lines))
         else:
-            self.stop_logcat()
-            raise TimeoutError('Timeout for reading logcat')
+            pattern_start = None
+
+        pattern_end = re.compile('|'.join(end_lines))
+        found = False
+        result = []
+        if start_lines is not None:
+            can_start = False
+        else:
+            can_start = True
+
+        while not found:
+            if timeout is not None:
+                if time.time() - start_time > timeout:
+                    self.stop_logcat()
+                    raise TimeoutError('Timeout for reading logcat')
+            log_str = self.__logcat.stdout.readline().decode(decode).strip()
+            if not can_start:
+                if re.search(pattern_start, log_str):
+                    can_start = True
+            if can_start:
+                if log_str not in ('', '\n', '\r'):
+                    result.append(log_str)
+            if re.search(pattern_end, log_str):
+                found = True
+        self.stop_logcat()
+        return result
 
     def __execute_adb_popen(self, *args, **kwargs) -> None:
         """
