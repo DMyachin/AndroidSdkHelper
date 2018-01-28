@@ -92,11 +92,17 @@ def _execute_command(args: list, output: bool = True) -> list:
         return []
 
 
-def __process_la(ok_strings: list) -> list:
+def __process_la(ls_la_lines: list) -> list:
+    """Разбираем выхлоп ls -la на группы
+
+    :param ls_la_lines: выхлоп комады ls -la в виде списка строк
+    :return: список из словарей с ключами:
+     права, количество ссылок на объект, владелец, группа, размер, дата, время, имя
+    """
     pattern = re.compile('^([drwx-]*) +(\d*) *(\w+) +(\w+) *(\d*) +([\d\-]+) +([\d:]+) (.*)$')
     result = []
     description = {}
-    for string in ok_strings:
+    for string in ls_la_lines:
         match = re.match(pattern, string)
         if match is not None:
             if not string.endswith('.'):
@@ -113,6 +119,12 @@ def __process_la(ok_strings: list) -> list:
 
 
 def _parse_la(la_result: list) -> tuple:
+    """
+    Разбор строк для ls -la, дабы отделить полезные данные от ошибок
+
+    :param la_result: список строк, которые отдаёт ls -la
+    :return: кортеж из строк с информацией типа времени и имени и список файлов с ошибкой доступа
+    """
     errors = []
     ok_strings = []
     for la in la_result:
@@ -194,18 +206,29 @@ class AndroidAdb(object):
         """
         self.__device = serial
 
+    def set_package(self, package: str) -> None:
+        """
+        Задать имя пакета по умолчанию. Если какой-то метод просит, но не требует, передавать имя пакета, то, если
+        его не передавать, скрипт передаст то имя, которое будет задано здесь
+
+        :param package:
+        """
+        self.__package = package
+
     def reconnect_device(self) -> None:
+        """
+        Переподключить устройство
+
+        """
         self.__execute_adb_run('reconnect')
 
-    def install(self, apk_file: str, serial: str = None, replace: bool = False, downgrade: bool = False,
+    def install(self, apk_file: str, replace: bool = False, downgrade: bool = False,
                 permissions: bool = False, auto_permissions: bool = False, allow_test: bool = True,
                 sdcard: bool = False) -> dict:
         """
         Установить apk файл на устройство
 
         :param apk_file: путь к apk
-        :param serial: serial устройства. Если его нет, будет читаться тот, что установлен через set_device. Если
-        всё равно нет — ключ '-s' использоваться не будет
         :param replace: разрешить ли установку поверх существующего приложения
         :param downgrade: разрешить ли даунгрейд (только для дебажных, вроде)
         :param permissions: автоматически предоставить рантайм пермишены. На Андроид 5 и ниже будут проблемы, т.к.
@@ -225,7 +248,7 @@ class AndroidAdb(object):
             command.append('-d')
         if permissions:
             command.append('-g')
-        if auto_permissions:
+        elif auto_permissions:
             if self.get_sdk_version() > 22:
                 if auto_permissions:
                     command.append('-g')
@@ -235,10 +258,16 @@ class AndroidAdb(object):
             command.append('-s')
         command.append(apk_file)
 
-        output = self.__execute_adb_run(*command, serial=serial)
+        output = self.__execute_adb_run(*command)
         return _check_install_remove(output, Mode.INSTALL)
 
     def is_installed(self, package: str = None) -> bool:
+        """
+        Проверить, установлен ли пакет
+        :param package: пакет, который нужно проверить. Если пакет не передан, используем тот, что был задан по
+         умолчанию. Если пакет по умолчанию не установлен — ловим искллючение
+        :return: булевое установлен или нет
+        """
         command = ['list', 'packages']
         if package is None:
             if self.__package is not None:
@@ -251,18 +280,6 @@ class AndroidAdb(object):
             return True
         else:
             return False
-
-    def execute_pm(self, *args, output: bool = True) -> list:
-        return self.adb_shell_run('pm', *args, output=output)
-
-    def set_package(self, package: str) -> None:
-        """
-        Задать имя пакета по умолчанию. Если какой-то метод просит, но не требует, передавать имя пакета, то, если
-        его не передавать, скрипт передаст то имя, которое будет задано здесь
-
-        :param package:
-        """
-        self.__package = package
 
     def uninstall(self, package: str = None) -> dict:
         """
@@ -278,12 +295,37 @@ class AndroidAdb(object):
         output = self.__execute_adb_run('uninstall', package)
         return _check_install_remove(output, Mode.UNINSTALL)
 
+    def execute_pm(self, *args, output: bool = True) -> list:
+        """
+        Выполняет переданные менеджеру пакетов команды
+
+        :param args: аргументы
+        :param output: нужен ли результат выполнения команды в виде списка строк
+        :return:
+        """
+        return self.adb_shell_run('pm', *args, output=output)
+
+    def start_logcat(self, clear: bool = True, log_format: str = 'threadtime') -> None:
+        """
+        Начать читать логкат. Чтение будет происходить в отдельном потоке, из которого потом нужно будет забрать данные
+
+        :param clear: предварительно очистить логкат от старых записей
+        :param log_format: формат вывода логката. Читайте справку. По умолчанию всё нормас, верьте мне
+        """
+        self.__check_logcat()
+        if clear:
+            self.clear_logcat()
+        command = []
+        if log_format:
+            command.extend(['-v', log_format])
+        return self.__execute_adb_popen('logcat', *command)
+
     def dump_logcat(self, log_format: str = 'threadtime') -> list:
         """
         Получить дамп вывода логката. Удобно, если вы предварительно очистили вывод от старых записей
 
         :param log_format: формат вывода логката. Читайте справку. По умолчанию всё нормас, верьте мне
-        :return: список строк логката в заданнм формате
+        :return: список строк логката
         """
         self.__check_logcat()
         command = ['logcat', '-d']
@@ -301,26 +343,10 @@ class AndroidAdb(object):
         self.__check_logcat()
         self.__execute_adb_run('logcat', '-c', output=False)
 
-    def start_logcat(self, clear: bool = True, log_format: str = 'threadtime') -> None:
-        """
-        Начать читать логкат. Чтение будет происходить в отдельном потоке, из которого выхлоп потом можно забрать
-         методом read_logcat()
-
-        :param clear: предварительно очистить логкат от старых записей
-        :param log_format: формат вывода логката. Читайте справку. По умолчанию всё нормас, верьте мне
-        """
-        self.__check_logcat()
-        if clear:
-            self.clear_logcat()
-        command = []
-        if log_format:
-            command.extend(['-v', log_format])
-        return self.__execute_adb_popen('logcat', *command)
-
     def stop_logcat(self) -> None:
         """
-        Остановить поток логката, если он ещё жив и освободить ссылку на него. Экономим память, ёпти!
-        В целом он нужен только если вы не делали чтение логката, т.к. чтение и так вызывает остановку.
+        Остановить поток логката, если он ещё жив и освободить ссылку на него.
+         Нужно только если вы не делали чтение логката.
 
         """
         if self.__logcat is not None:
@@ -348,8 +374,20 @@ class AndroidAdb(object):
         self.stop_logcat()
         return _prepare_output(out)
 
-    def read_logcat_for_line(self, end_line: str, start_line: str = None,
-                             timeout: int = None, decode: str = 'utf-8') -> list:
+    def read_logcat_while_line(self, end_line: str, start_line: str = None,
+                               timeout: int = None, decode: str = 'utf-8') -> list:
+        """
+        Читать логкат, накапливая строки в списке, пока не встретим какую-то ключевую строку. После этого забираем
+        весь накопленный список строк
+
+        :param end_line: ключевая строка, по которой процесс чтения будет прекращён
+        :param start_line: ключевая строка, по которой процесс накопления списка строк начнётся. Все строки,
+         которые будут в логе до этой ключевой, будут проигнорированы. Если строка не передана, накапливание начнётся
+         сразу же
+        :param timeout: максимальное время, в секундах, выделяемое на ожидание финальной строки
+        :param decode: в какой кодировке декодировать строки. По умолчанию используется utf-8
+        :return: список накопленных строк. Пустые строки в список не попадают
+        """
         if self.__logcat is None:
             raise LogcatNotDefinedError('Logcat not defined')
 
@@ -384,8 +422,21 @@ class AndroidAdb(object):
         self.stop_logcat()
         return result
 
-    def read_logcat_for_lines(self, end_lines: list, start_lines: list = None, timeout: int = None,
-                              decode: str = 'utf-8') -> list:
+    def read_logcat_while_lines(self, end_lines: list, start_lines: list = None, timeout: int = None,
+                                decode: str = 'utf-8') -> list:
+        """
+        Читать логкат, накапливая строки в списке, пока не встретим какую-то ключевую строку из переданного списока
+         строк. Вы можете определить и свои строки, которые ожидаете и, например, ключевые строчки, связанные с
+         падениями и иными внезапными завершениями. Если будет встречена любая строка из списка, забираем накопленый лог
+
+        :param end_lines: список ключевых строк, по которым нужно прекратить чтение логката и предоставить накопленный
+         список строк
+        :param start_lines: список ключевых строк, с которых нужно начать накапливать строки. Если его нет, то строки
+         будут накапливаться с первой же
+        :param timeout: максимальное время в секундах, выделенное на ожидание финальной строки
+        :param decode: кодировка для декодирования строк. По умолчанию utf-8
+        :return: список накопленных строк
+        """
         if self.__logcat is None:
             raise LogcatNotDefinedError('Logcat not defined')
 
@@ -421,22 +472,21 @@ class AndroidAdb(object):
         self.stop_logcat()
         return result
 
-    def __execute_adb_popen(self, *args, **kwargs) -> None:
+    def __execute_adb_popen(self, *args) -> None:
         """
         Выполняем команды adb с переданными параметрами в отдельном треде
 
         :param args: аргументы. Список, кортеж, набор, словарь — это всё 1 аргумент! Так что если у вас итерируемый
         объект, то не забывайте его разворачивать, как мама в дестве учила: *[]
-        :param kwargs: именованые аргументы. Пока тут только serial читается, остальные будут пропущены
         """
         command = [self.__adb]
-        serial = kwargs.get('serial', self.__device)
+        serial = self.__device
         if serial is not None:
             command.extend(['-s', serial])
         command.extend([*args])
         self.__logcat = subprocess.Popen(command, stdout=subprocess.PIPE)
 
-    def __execute_adb_run(self, *args, output: bool = True, **kwargs) -> list:
+    def __execute_adb_run(self, *args, output: bool = True, ) -> list:
         """
         Выполняем команды adb с переданными параметрами в основном треде. И пусть весь мир подождёт
 
@@ -444,11 +494,9 @@ class AndroidAdb(object):
         объект, то не забывайте его разворачивать, как мама в дестве учила: *[]
         :param output: нужен ли вам выхлоп команды. Если не нужен, то он всё равно будет, но пустым списком. Так что
          проверка вида if output будет False
-        :param kwargs: именованые аргументы. Пока тут только serial читается, остальные будут пропущены
         :return: выхлоп в виде списка строк
         """
         command = [self.__adb]
-        # serial = kwargs.get('serial', self.__device)
         serial = self.__device
         if serial is not None:
             command.extend(['-s', serial])
@@ -459,6 +507,8 @@ class AndroidAdb(object):
         """
         Проверяем, а не использует ли у нас логкат сейчас.
 
+        :type auto_kill: булевое рибивать ли процесс логката, если он не был убит в прошлый раз или выбросить исключение
+        :return: булевое жив ли процесс на данный момент
         """
         if self.__logcat is not None:
             if self.__logcat.poll() is not None:
@@ -485,7 +535,7 @@ class AndroidAdb(object):
 
     def get_sdk_version(self) -> int:
         """
-        Узнать sdk version Андроида
+        Узнать sdk version (API level) Андроида
 
         :return: интовое значение с версией SDK вида 22. Если версию получить не удалось, будет отрицательное число.
         """
@@ -494,6 +544,14 @@ class AndroidAdb(object):
             return int(v)
         else:
             return -1
+
+    def get_api_level(self) -> int:
+        """
+        Узнать sdk version (API level) Андроида
+
+        :return: интовое значение с API level, например 22. Если версию получить не удалось, будет отрицательное число.
+        """
+        return self.get_sdk_version()
 
     def get_security_patch(self) -> str:
         """
@@ -508,7 +566,7 @@ class AndroidAdb(object):
         Получить какой-нибудь property в виде строки
 
         :param param: название property, типа 'ro.product.locale.language'
-        :return: строка со значением. Либо пустая строка, если есть проблемы
+        :return: строка со значением. Либо пустая строка, если такого property нет
         """
         prop = self.adb_shell_run('getprop', param)
         if prop:
@@ -520,7 +578,7 @@ class AndroidAdb(object):
         """
         Вызываем активити пакета с заданными аргументами
 
-        :param package: имя пакета. Если опущено, получем то, что было задано через .set_package()
+        :param package: имя пакета. Если опущено, будет использоваться имя пакета, установленное по умолчаиню
         :param activity: полное имя активити, включая java package, в котором оно лежит
         :param args: список аргументов, которые могут быть нужны для этой активити
         """
@@ -540,9 +598,9 @@ class AndroidAdb(object):
         Закинуть файлы и каталоги на устройство
 
         :param source: список файлов и каталогов. Структура каталогов будет сохранена
-        :param destination: куда пушим
+        :param destination: куда пушим. Если заданного пути нет, он будет создан
         :param sync: пушить только те файлы, которых не хватает на устройстве и те, которые на устройстве более старые
-        :return: список строк, по которым можно понять, стянулись ли файлы или пропущены
+        :return: список строк, по которым можно понять, какие файлы залились, а какие — нет
         """
         command = ['push', *source, destination]
         if sync:
@@ -599,13 +657,13 @@ class AndroidAdb(object):
 
     def adb_shell_run(self, *args, from_package: bool = False, check_android: bool = True, output: bool = True) -> list:
         """
-        Вызывает метод выполнения adb комманд. На себя берёт подстановку shell
+        Выполнить переданную команду в шелле в основном потоке скрипта
 
-        :param from_package: выполнить команду от имени пакета. Только для Android 5+. Может не работать на Samsung.
-        Для автоматической проверки, возможна ли операция, используйте параметр check_android.
+        :param from_package: выполнить команду от имени пакета. Только для Android 5+ и только для дебажных сборок.
+         Может не работать на Samsung и других маргинальных устройствах
         :param check_android: проверить, подходит ли версия Android для выполенния операции от имени пакета
         :param args: аргументы
-        :param output: нужен ли выхлоп
+        :param output: нужен ли вам выхлоп выполнения команды в виде списка строк
         :return: список строк
         """
         command = ['shell']
@@ -619,10 +677,25 @@ class AndroidAdb(object):
         return self.__execute_adb_run(*command, output=output)
 
     def mkdir(self, destination: str) -> None:
+        """
+        Создать директорию любого уровня вложенности
+
+        :param destination: путь, который нужно создать
+        """
         command = ['mkdir', '-p', destination]
         self.adb_shell_run(*command, output=False)
 
     def get_full_ls_info(self, target: str, from_package: bool = False) -> tuple:
+        """
+        Получить информацию о каждом файле в переданной папке, включая его дату, вес, количество ссылок, права
+
+        :param target: папка, в которой выполнить ls -la
+        :param from_package: выполнить операцию от имени пакета, заданного по умолчанию
+        :return: кортеж из двух элементов. Первый — список словарей, описывающих каждый файл в папке, см. ниже.
+        Второй элемент — список файлов, инфорацию о которых получить не удалось.
+        Состав словаря: 'rights', 'links', 'owner', 'group', 'size', 'date', 'time', 'name'.
+        В младших версиях Android некоторые ключи будут возвращать None
+        """
         files_info = None
         files = self.adb_shell_run('ls', '-la', target, from_package=from_package)
         if files:
@@ -633,6 +706,14 @@ class AndroidAdb(object):
             return None, None
 
     def get_file_ls_info(self, target: str, from_package: bool = False) -> dict:
+        """
+        Получить информацию о переданном файле, включая его дату, вес, количество сылок, права и др.
+
+        :param target: путь к файлу
+        :param from_package: выполнить операцию от установленного по умолчанию имени пакета
+        :return: словарь с ключами: 'rights', 'links', 'owner', 'group', 'size', 'date', 'time', 'name'.
+        В младших версиях Android некоторые ключи будут возвращать None
+        """
         file_info = self.get_full_ls_info(target, from_package)
         if file_info[0]:
             return file_info[0][0]

@@ -3,43 +3,30 @@
 import os
 
 
-def _path_checker(path: str, obj_type: str, raise_exception: bool = True) -> bool:
+def _path_checker(path: str, obj_type: str) -> bool:
     """
     Проверяем переданные пути к фалам и папкам
 
     :param path: сам путь к файлу или папке. Переменные окружения разрешены
     :param obj_type: что передали то — файл или папку?
-    :param raise_exception: выбрасывать ислючение или хватит False?
     :return:
     """
-    if not isinstance(raise_exception, bool):
-        raise AttributeError('Parameter "raise_exception" must be bool')
-
     path = os.path.expandvars(path)
     if os.path.exists(path):
         if obj_type == "dir":
             if os.path.isdir(path):
                 return True
             else:
-                if raise_exception:
-                    raise IsADirectoryError(f'"{path}" is not a directory')
-                else:
-                    return False
+                raise IsADirectoryError(f'"{path}" is not a directory')
         elif obj_type == "file":
             if os.path.isfile(path):
                 return True
             else:
-                if raise_exception:
-                    raise FileNotFoundError(f'"{path}" is not file')
-                else:
-                    return False
+                raise FileNotFoundError(f'"{path}" is not file')
         else:
             raise AttributeError(f'Unknown parameter "{obj_type}"')
     else:
-        if raise_exception:
-            raise OSError(f'Path {path} not exist')
-        else:
-            return False
+        raise OSError(f'Path {path} not exist')
 
 
 class AndroidSdk(object):
