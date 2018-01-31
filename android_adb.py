@@ -651,7 +651,7 @@ class AndroidAdb(object):
             command.append('-f')
         else:
             command.append('-rf')
-        command.append(*files)
+        command.append(files)
 
         return self.adb_shell_run(*command)
 
