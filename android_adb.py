@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import os
-import re
 import subprocess
 import time
+
+import os
+import re
 from enum import Enum, unique
 
 import android_sdk
