@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import subprocess
-import time
-
 import os
 import re
+import subprocess
+import time
 from enum import Enum, unique
 
 import android_sdk
@@ -684,6 +683,14 @@ class AndroidAdb(object):
         :param destination: путь, который нужно создать
         """
         command = ['mkdir', '-p', destination]
+        self.adb_shell_run(*command, output=False)
+
+    def rmdir(self, destination: str) -> None:
+        """Удалить директорию и все вложенные объекты. Осторожно!
+
+        :param destination: путь, который нужно рекурсивно удалить. Удаляются вложенные объекты, но не наддиректории
+        """
+        command = ['rm', '-rf', destination]
         self.adb_shell_run(*command, output=False)
 
     def get_full_ls_info(self, target: str, from_package: bool = False) -> tuple:
