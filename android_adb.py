@@ -162,7 +162,7 @@ class AndroidAdb(object):
 
         :param path: путь к adb. Его можно спросить у AndroidSdk()
         """
-        self.__adb = os.path.expandvars(path)
+        self.__adb = os.path.expanduser(os.path.expandvars(path))
         self.__device = None
         self.__logcat = None
         self.__package = None

@@ -7,7 +7,7 @@ import android_sdk
 
 class AndroidAapt(object):
     def __init__(self, path: str) -> None:
-        self.__aapt = os.path.expandvars(path)
+        self.__aapt = os.path.expanduser(os.path.expandvars(path))
 
 
 if __name__ == '__main__':

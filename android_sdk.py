@@ -11,7 +11,7 @@ def _path_checker(path: str, obj_type: str) -> bool:
     :param obj_type: что передали то — файл или папку?
     :return:
     """
-    path = os.path.expandvars(path)
+    path = os.path.expanduser(os.path.expandvars(path))
     if os.path.exists(path):
         if obj_type == "dir":
             if os.path.isdir(path):
@@ -55,7 +55,7 @@ class AndroidSdk(object):
             if auto_set is None:
                 auto_set = []
             if isinstance(auto_set, list):
-                self.set_sdk(os.path.expandvars(path), auto_set)
+                self.set_sdk(os.path.expanduser(os.path.expandvars(path)), auto_set)
             else:
                 raise AttributeError('Auto_set must be list type')
 
