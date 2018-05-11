@@ -166,6 +166,7 @@ class AndroidAdb(object):
         self.__device = None
         self.__logcat = None
         self.__package = None
+        self.__exit_lines = None
 
     def get_devices(self) -> list:
         """
@@ -388,39 +389,60 @@ class AndroidAdb(object):
         :param decode: в какой кодировке декодировать строки. По умолчанию используется utf-8
         :return: список накопленных строк. Пустые строки в список не попадают
         """
-        if self.__logcat is None:
-            raise LogcatNotDefinedError('Logcat not defined')
-
-        start_time = time.time()
-        if not timeout:
-            timeout = float('inf')
-
-        found = False
-        result = []
+        # if self.__logcat is None:
+        #     raise LogcatNotDefinedError('Logcat not defined')
+        #
+        # start_time = time.time()
+        # if not timeout:
+        #     timeout = float('inf')
+        #
+        # found = False
+        # result = []
+        # if start_line is not None:
+        #     can_start = False
+        # else:
+        #     can_start = True
+        #
+        # while not found:
+        #     if time.time() - start_time > timeout:
+        #         self.stop_logcat()
+        #         raise TimeoutError('Timeout for reading logcat')
+        #     else:
+        #         log_str = self.__logcat.stdout.readline().decode(decode).strip()
+        #         if end_line in log_str:
+        #             found = True
+        #
+        #     if can_start:
+        #         if log_str not in ('', '\n', '\r'):
+        #             result.append(log_str)
+        #     else:
+        #         if start_line in log_str:
+        #             result.append(log_str)
+        #             can_start = True
+        #
+        # self.stop_logcat()
+        # return result
         if start_line is not None:
-            can_start = False
+            start_line = [start_line]
+        return self.read_logcat_while_lines([end_line], start_line, timeout, decode)
+
+    def set_logcat_exit_lines(self, lines: list) -> None:
+        """
+        Заранее (пере)определить строки, по которым возможен выход при чтении логката. Полезно добавлять сюда ключевые
+         слова, описывающие, к примеру, падение приложения. Они не являются ожидаемыми, при этом позволят не
+         отваливаться по таймауту, а выйти сразу после падения
+        :param lines: список ключевых строк
+        """
+        if isinstance(lines, (list, set, tuple)):
+            self.__exit_lines = lines
         else:
-            can_start = True
+            raise TypeError('Expected list or tuple or set but %s got' % type(list))
 
-        while not found:
-            if time.time() - start_time > timeout:
-                self.stop_logcat()
-                raise TimeoutError('Timeout for reading logcat')
-            else:
-                log_str = self.__logcat.stdout.readline().decode(decode).strip()
-                if end_line in log_str:
-                    found = True
-
-            if can_start:
-                if log_str not in ('', '\n', '\r'):
-                    result.append(log_str)
-            else:
-                if start_line in log_str:
-                    result.append(log_str)
-                    can_start = True
-
-        self.stop_logcat()
-        return result
+    def clear_logcat_exit_lines(self) -> None:
+        """
+        Очистить дополнительный список строк, при появлении которых в логкате, мы бы оттуда сразу вышли
+        """
+        self.__exit_lines = None
 
     def read_logcat_while_lines(self, end_lines: list, start_lines: list = None, timeout: int = None,
                                 decode: str = 'utf-8') -> list:
@@ -430,7 +452,8 @@ class AndroidAdb(object):
          падениями и иными внезапными завершениями. Если будет встречена любая строка из списка, забираем накопленый лог
 
         :param end_lines: список ключевых строк, по которым нужно прекратить чтение логката и предоставить накопленный
-         список строк
+         список строк. Список автоматически расширяется теми строками, которые были переданы методу
+         set_logcat_exit_lines(). Дублирующие ключевые слова будут автоматически удалены
         :param start_lines: список ключевых строк, с которых нужно начать накапливать строки. Если его нет, то строки
          будут накапливаться с первой же
         :param timeout: максимальное время в секундах, выделенное на ожидание финальной строки
@@ -447,7 +470,9 @@ class AndroidAdb(object):
         else:
             pattern_start = None
 
-        pattern_end = re.compile('|'.join(end_lines))
+        if self.__exit_lines is not None:
+            end_lines += self.__exit_lines
+        pattern_end = re.compile('|'.join(set(end_lines)))
         found = False
         result = []
         if start_lines is not None:
