@@ -128,8 +128,8 @@ def _parse_la(la_result: list) -> tuple:
     errors = []
     ok_strings = []
     for la in la_result:
-        if la.endswith('Permission denied'):
-            errors.append(la[4:])
+        if any([la.endswith('Permission denied'), la.endswith('No such file or directory')]):
+            errors.append((la.split(': ')[-2], la.split(': ')[-1]))
         else:
             ok_strings.append(la)
     if ok_strings:
@@ -745,14 +745,19 @@ class AndroidAdb(object):
         :param target: путь к файлу
         :param from_package: выполнить операцию от установленного по умолчанию имени пакета
         :return: словарь с ключами: 'rights', 'links', 'owner', 'group', 'size', 'date', 'time', 'name'.
-        В младших версиях Android некоторые ключи будут возвращать None
+        Если данные о файле получить не удалось, будет возвращён словарь с единственным ключём 'reply', который может
+         содержать описание причины провала (строка). А может содержать пустую строку, если причины не известны
+        В младших версиях Android некоторые ключи будут возвращать пустую строку
         """
         file_info = self.get_full_ls_info(target, from_package)
         if file_info[0]:
             return file_info[0][0]
         else:
-            if file_info[0][1]:
-                return {'reply': file_info[0][1]}
+            if file_info[1]:
+                return {'reply': file_info[1][0][1]}
+            else:
+                return {'reply': ''}
+
 
 
 if __name__ == '__main__':
@@ -828,6 +833,6 @@ if __name__ == '__main__':
     # pprint.pprint (qq)
 
     # adb.remove(files=['/sdcard/install.cfg', '/sdcard/install.sh', '/sdcard/SKIP/'])
-    f_lst = adb.get_full_ls_info('"/sdcard/.1 2 3"')
+    print(adb.get_file_ls_info('qqq'))
     # for i in f_lst:
     #     print(i)
