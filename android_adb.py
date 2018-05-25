@@ -128,7 +128,8 @@ def _parse_la(la_result: list) -> tuple:
     errors = []
     ok_strings = []
     for la in la_result:
-        if any([la.endswith('Permission denied'), la.endswith('No such file or directory')]):
+        if any([la.endswith('Permission denied'),
+                la.endswith('No such file or directory'),]):
             errors.append((la.split(': ')[-2], la.split(': ')[-1]))
         else:
             ok_strings.append(la)
@@ -758,6 +759,67 @@ class AndroidAdb(object):
             else:
                 return {'reply': ''}
 
+    def _test_file(self, target: str, from_package: bool = False) -> list:
+        """
+        Обратиться к файлу/папке
+        :param target: путь к файлу или папке
+        :param from_package: выполнить задачу от имени пакета
+        :return: ответ в виде списка строк
+        """
+        return self.adb_shell_run(target, from_package=from_package, check_android=False)
+
+    def is_exist(self, target: str, from_package: bool = False) -> bool:
+        """
+        Существует ли папка или файл. Проверка доступа НЕ выполняется!
+        :param target: путь к файлу или папке
+        :param from_package: выполнить задачу от имени пакета
+        :return: булевый ответ, существует ли этот файл или папка
+        """
+        res = self.get_file_ls_info(target, from_package)
+        return res.get('reply') is None
+
+    def is_directory(self, target: str, from_package: bool = False) -> bool:
+        """
+        Является ли переданный путь путём к папке
+        :param target: путь к файлу/папке
+        :param from_package: выполнить задачу от имени пакета
+        :return: булевый ответ, путь ли к папке это был
+        """
+        if self.is_exist(target, from_package):
+            return 'Is a directory' in self._test_file(target, from_package)[-1]
+        else:
+            return False
+
+    def is_file(self, target: str, from_package: bool = False) -> bool:
+        """
+        Является ли переданный путь путём к файлу
+        :param target: путь к файлу/папке
+        :param from_package: выполнить задачу от имени пакета
+        :return: булевый ответ, путь ли к файлу это был
+        """
+        if self.is_exist(target, from_package):
+            return not self.is_directory(target, from_package)
+        else:
+            return False
+
+    def get_md5(self, target: str, from_package: bool = False) -> str:
+        """
+        Получить md5 файла
+        :param target: путь к файлу
+        :param from_package: выполнить операцию от имени пакета
+        :return: md5 в виде строки. Если хеш получить не удалось, то строка будет пустой
+        """
+        possible_md5 = ['md5sum', 'md5']  # Поддерживаем как новые версии Android, так и старое говно
+        md5_str = ''
+
+        for md5_name in possible_md5:
+            res = self.adb_shell_run(md5_name, target, from_package=from_package, check_android=False)
+            if 'not found' in res[0]:
+                continue
+            else:
+                md5_str = res[0].split(' ')[0].strip()
+        return md5_str
+
 
 if __name__ == '__main__':
     test_sdk_path = '$ANDROID_HOME'
@@ -832,6 +894,16 @@ if __name__ == '__main__':
     # pprint.pprint (qq)
 
     # adb.remove(files=['/sdcard/install.cfg', '/sdcard/install.sh', '/sdcard/SKIP/'])
-    print(adb.get_file_ls_info('qqq'))
+    # print(adb.get_file_ls_info('/sdcard/'))
     # for i in f_lst:
     #     print(i)
+
+    print(adb.is_exist('/sdcard/'))
+    print(adb.is_exist('/sdcard/Download/test.tmp'))
+    print(adb.is_exist('/sdcard/1'))
+    print(adb.is_file('/sdcard/'))
+    print(adb.is_directory('/sdcard/'))
+    print(adb.is_file('/sdcard/Download/test.tmp'))
+    print(adb.is_file('/sdcard/Download/test.tm'))
+    print(adb.is_directory('/sdcard/1'))
+    print(adb.get_md5('/sdcard/Download/test.tmp'))
