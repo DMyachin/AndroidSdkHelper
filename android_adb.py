@@ -814,7 +814,7 @@ class AndroidAdb(object):
 
         for md5_name in possible_md5:
             res = self.adb_shell_run(md5_name, target, from_package=from_package, check_android=False)
-            if 'not found' in res[0]:
+            if 'not found' in res[0] or 'No such file or directory' in res[0]:
                 continue
             else:
                 md5_str = res[0].split(' ')[0].strip()
