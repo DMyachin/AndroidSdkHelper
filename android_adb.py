@@ -759,7 +759,6 @@ class AndroidAdb(object):
                 return {'reply': ''}
 
 
-
 if __name__ == '__main__':
     test_sdk_path = '$ANDROID_HOME'
     sdk = android_sdk.AndroidSdk(test_sdk_path, auto_set=['adb'])
