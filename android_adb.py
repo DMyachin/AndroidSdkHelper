@@ -167,7 +167,7 @@ class AndroidAdb(object):
         self.__device = None
         self.__logcat = None
         self.__package = None
-        self.__exit_lines = None
+        self.__exit_lines = set()
 
     def get_devices(self) -> list:
         """
@@ -427,15 +427,15 @@ class AndroidAdb(object):
             start_line = [start_line]
         return self.read_logcat_while_lines([end_line], start_line, timeout, decode)
 
-    def set_logcat_exit_lines(self, lines: list) -> None:
+    def set_logcat_exit_lines(self, lines: (list, set, tuple)) -> None:
         """
         Заранее (пере)определить строки, по которым возможен выход при чтении логката. Полезно добавлять сюда ключевые
          слова, описывающие, к примеру, падение приложения. Они не являются ожидаемыми, при этом позволят не
          отваливаться по таймауту, а выйти сразу после падения
-        :param lines: список ключевых строк
+        :param lines: список/набор/кортеж ключевых строк
         """
         if isinstance(lines, (list, set, tuple)):
-            self.__exit_lines = lines
+            self.__exit_lines = set(lines)
         else:
             raise TypeError('Expected list or tuple or set but %s got' % type(list))
 
@@ -443,7 +443,30 @@ class AndroidAdb(object):
         """
         Очистить дополнительный список строк, при появлении которых в логкате, мы бы оттуда сразу вышли
         """
-        self.__exit_lines = None
+        self.__exit_lines.clear()
+
+    def get_logcat_exit_lines(self) -> set:
+        """
+        Получить глобальный список строк, по которым возможен выход при чтении логката
+        :return: набор ключевых строк
+        """
+        return self.__exit_lines
+
+    def add_logcat_exit_lines(self, lines: (list, set, tuple)) -> None:
+        """
+        Расширить набор строк, по которым возможен выход при чтении логката. Полезно добавлять сюда ключевые
+         слова, описывающие, к примеру, падение приложения. Они не являются ожидаемыми, при этом позволят не
+         отваливаться по таймауту, а выйти сразу после падения
+        :param lines: список/набор/кортеж ключевых строк
+        """
+        self.__exit_lines.update(lines)
+
+    def remove_logcat_exit_lines(self, lines: (list, set, tuple)) -> None:
+        """
+        Сузить набор ключевых строк, по которым возможен выход из логката.
+        :param lines: список/набор/кортеж ключевых строк
+        """
+        self.__exit_lines = self.__exit_lines - set(lines)
 
     def read_logcat_while_lines(self, end_lines: list, start_lines: list = None, timeout: int = None,
                                 decode: str = 'utf-8') -> list:
@@ -471,7 +494,7 @@ class AndroidAdb(object):
         else:
             pattern_start = None
 
-        if self.__exit_lines is not None:
+        if self.__exit_lines:
             end_lines += self.__exit_lines
         pattern_end = re.compile('|'.join(set(end_lines)))
         found = False
