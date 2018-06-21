@@ -5,8 +5,10 @@ import re
 import subprocess
 import time
 from enum import Enum, unique
+from typing import Iterable
 
 import android_sdk
+from android_sdk import PathLike
 
 
 @unique
@@ -157,7 +159,7 @@ def _check_install_remove(output: list, command: Mode) -> dict:
 
 
 class AndroidAdb(object):
-    def __init__(self, path: str) -> None:
+    def __init__(self, path: PathLike) -> None:
         """
         Получаем adb и работаем с ним
 
@@ -427,7 +429,7 @@ class AndroidAdb(object):
             start_line = [start_line]
         return self.read_logcat_while_lines([end_line], start_line, timeout, decode)
 
-    def set_logcat_exit_lines(self, lines: (list, set, tuple)) -> None:
+    def set_logcat_exit_lines(self, lines: Iterable) -> None:
         """
         Заранее (пере)определить строки, по которым возможен выход при чтении логката. Полезно добавлять сюда ключевые
          слова, описывающие, к примеру, падение приложения. Они не являются ожидаемыми, при этом позволят не
@@ -452,7 +454,7 @@ class AndroidAdb(object):
         """
         return self.__exit_lines
 
-    def add_logcat_exit_lines(self, lines: (list, set, tuple)) -> None:
+    def add_logcat_exit_lines(self, lines: Iterable) -> None:
         """
         Расширить набор строк, по которым возможен выход при чтении логката. Полезно добавлять сюда ключевые
          слова, описывающие, к примеру, падение приложения. Они не являются ожидаемыми, при этом позволят не
@@ -461,7 +463,7 @@ class AndroidAdb(object):
         """
         self.__exit_lines.update(lines)
 
-    def remove_logcat_exit_lines(self, lines: (list, set, tuple)) -> None:
+    def remove_logcat_exit_lines(self, lines: Iterable) -> None:
         """
         Сузить набор ключевых строк, по которым возможен выход из логката.
         :param lines: список/набор/кортеж ключевых строк
@@ -535,7 +537,7 @@ class AndroidAdb(object):
         command.extend([*args])
         self.__logcat = subprocess.Popen(command, stdout=subprocess.PIPE)
 
-    def __execute_adb_run(self, *args, output: bool = True, ) -> list:
+    def __execute_adb_run(self, *args, output: bool = True) -> list:
         """
         Выполняем команды adb с переданными параметрами в основном треде. И пусть весь мир подождёт
 
@@ -725,7 +727,7 @@ class AndroidAdb(object):
         command.extend(args)
         return self.__execute_adb_run(*command, output=output)
 
-    def mkdir(self, destination: str) -> None:
+    def mkdir(self, destination: PathLike) -> None:
         """
         Создать директорию любого уровня вложенности
 
@@ -734,7 +736,7 @@ class AndroidAdb(object):
         command = ['mkdir', '-p', destination]
         self.adb_shell_run(*command, output=False)
 
-    def rmdir(self, destination: str) -> None:
+    def rmdir(self, destination: PathLike) -> None:
         """Удалить директорию и все вложенные объекты. Осторожно!
 
         :param destination: путь, который нужно рекурсивно удалить. Удаляются вложенные объекты, но не наддиректории
@@ -742,7 +744,7 @@ class AndroidAdb(object):
         command = ['rm', '-rf', destination]
         self.adb_shell_run(*command, output=False)
 
-    def get_full_ls_info(self, target: str, from_package: bool = False) -> tuple:
+    def get_full_ls_info(self, target: PathLike, from_package: bool = False) -> tuple:
         """
         Получить информацию о каждом файле в переданной папке, включая его дату, вес, количество ссылок, права
 
@@ -762,7 +764,7 @@ class AndroidAdb(object):
         else:
             return None, None
 
-    def get_file_ls_info(self, target: str, from_package: bool = False) -> dict:
+    def get_file_ls_info(self, target: PathLike, from_package: bool = False) -> dict:
         """
         Получить информацию о переданном файле, включая его дату, вес, количество сылок, права и др.
 
@@ -782,7 +784,7 @@ class AndroidAdb(object):
             else:
                 return {'reply': ''}
 
-    def _test_file(self, target: str, from_package: bool = False) -> list:
+    def _test_file(self, target: PathLike, from_package: bool = False) -> list:
         """
         Обратиться к файлу/папке
         :param target: путь к файлу или папке
@@ -791,7 +793,7 @@ class AndroidAdb(object):
         """
         return self.adb_shell_run(target, from_package=from_package, check_android=False)
 
-    def is_exist(self, target: str, from_package: bool = False) -> bool:
+    def is_exist(self, target: PathLike, from_package: bool = False) -> bool:
         """
         Существует ли папка или файл. Проверка доступа НЕ выполняется!
         :param target: путь к файлу или папке
@@ -801,7 +803,7 @@ class AndroidAdb(object):
         res = self.get_file_ls_info(target, from_package)
         return res.get('reply') is None
 
-    def is_directory(self, target: str, from_package: bool = False) -> bool:
+    def is_directory(self, target: PathLike, from_package: bool = False) -> bool:
         """
         Является ли переданный путь путём к папке
         :param target: путь к файлу/папке
@@ -813,7 +815,7 @@ class AndroidAdb(object):
         else:
             return False
 
-    def is_file(self, target: str, from_package: bool = False) -> bool:
+    def is_file(self, target: PathLike, from_package: bool = False) -> bool:
         """
         Является ли переданный путь путём к файлу
         :param target: путь к файлу/папке
@@ -825,7 +827,7 @@ class AndroidAdb(object):
         else:
             return False
 
-    def get_md5(self, target: str, from_package: bool = False) -> str:
+    def get_md5(self, target: PathLike, from_package: bool = False) -> str:
         """
         Получить md5 файла
         :param target: путь к файлу
@@ -922,13 +924,13 @@ if __name__ == '__main__':
     # print(adb.get_file_ls_info('/sdcard/'))
     # for i in f_lst:
     #     print(i)
-
-    print(adb.is_exist('/sdcard/'))
-    print(adb.is_exist('/sdcard/Download/test.tmp'))
-    print(adb.is_exist('/sdcard/1'))
-    print(adb.is_file('/sdcard/'))
-    print(adb.is_directory('/sdcard/'))
-    print(adb.is_file('/sdcard/Download/test.tmp'))
-    print(adb.is_file('/sdcard/Download/test.tm'))
-    print(adb.is_directory('/sdcard/1'))
-    print(adb.get_md5('/sdcard/Download/test.tmp'))
+    #
+    # print(adb.is_exist('/sdcard/'))
+    # print(adb.is_exist('/sdcard/Download/test.tmp'))
+    # print(adb.is_exist('/sdcard/1'))
+    # print(adb.is_file('/sdcard/'))
+    # print(adb.is_directory('/sdcard/'))
+    # print(adb.is_file('/sdcard/Download/test.tmp'))
+    # print(adb.is_file('/sdcard/Download/test.tm'))
+    # print(adb.is_directory('/sdcard/1'))
+    # print(adb.get_md5('/sdcard/Download/test.tmp'))

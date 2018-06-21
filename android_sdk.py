@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import os
+from typing import Union
+
+PathLike = Union[bytes, str]
 
 
-def _path_checker(path: str, obj_type: str) -> bool:
+def _path_checker(path: PathLike, obj_type: str) -> bool:
     """
     Проверяем переданные пути к фалам и папкам
 
@@ -30,7 +33,7 @@ def _path_checker(path: str, obj_type: str) -> bool:
 
 
 class AndroidSdk(object):
-    def __init__(self, path: str = None, auto_set: list = None, select_last: bool = True) -> None:
+    def __init__(self, path: PathLike = None, auto_set: list = None, select_last: bool = True) -> None:
         """
         Конструктор, чё тут ещё сказать
 
@@ -59,7 +62,7 @@ class AndroidSdk(object):
             else:
                 raise AttributeError('Auto_set must be list type')
 
-    def set_sdk(self, path: str, auto_set: list) -> None:
+    def set_sdk(self, path: PathLike, auto_set: list) -> None:
         """
         Задать путь к SDK
 
@@ -91,7 +94,7 @@ class AndroidSdk(object):
                 else:
                     raise ValueError("Build tools has different versions")
 
-    def get_sdk(self) -> str:
+    def get_sdk(self) -> PathLike:
         """
         Вспомнить путь к SDK, если вдруг забыли
 
@@ -99,7 +102,7 @@ class AndroidSdk(object):
         """
         return self.__sdk
 
-    def set_adb(self, path: str = None) -> None:
+    def set_adb(self, path: PathLike = None) -> None:
         """
         Задать путь к adb, если заранее не делали auto_set=['adb'], хотя вам и предлагали. Ну или если хотите
          его заменить на другой
@@ -114,7 +117,7 @@ class AndroidSdk(object):
             if _path_checker(expected_adb_path, "file"):
                 self.__adb = expected_adb_path
 
-    def get_adb(self) -> str:
+    def get_adb(self) -> PathLike:
         """
         Вспомнить da way к adb, если вдруг забыли. Ну или узнать, если он был установлен автоматически
 
@@ -122,7 +125,7 @@ class AndroidSdk(object):
         """
         return self.__adb
 
-    def set_aapt(self, path: str = None) -> None:
+    def set_aapt(self, path: PathLike = None) -> None:
         """
         Задать путь к aapt, если заране не сделали auto_set=['aapt'], хотя вам и предлагали. Ну, либо вы хотите заменить
          его на другой
@@ -138,7 +141,7 @@ class AndroidSdk(object):
             if _path_checker(expected_aapt, 'file'):
                 self.__aapt = expected_aapt
 
-    def get_aapt(self) -> str:
+    def get_aapt(self) -> PathLike:
         """
         Получить путь к aapt
 
@@ -146,7 +149,7 @@ class AndroidSdk(object):
         """
         return self.__aapt
 
-    def set_zipalign(self, path: str = None) -> None:
+    def set_zipalign(self, path: PathLike = None) -> None:
         """
         Задать путь к утилите zipalign, либо заменить на новый
 
@@ -161,7 +164,7 @@ class AndroidSdk(object):
             if _path_checker(expected_path, 'file'):
                 self.__zipalign = expected_path
 
-    def get_zipalign(self) -> str:
+    def get_zipalign(self) -> PathLike:
         """
         Получить путь к утилите zipalign
 
@@ -169,7 +172,7 @@ class AndroidSdk(object):
         """
         return self.__zipalign
 
-    def set_emulator(self, path: str = None) -> None:
+    def set_emulator(self, path: PathLike = None) -> None:
         """
         Задать путь к утилите emulator
 
@@ -183,7 +186,7 @@ class AndroidSdk(object):
             if _path_checker(expected_path, 'file'):
                 self.__emulator = expected_path
 
-    def get_emulator(self) -> str:
+    def get_emulator(self) -> PathLike:
         """
         Получить путь к утилите emulator
 

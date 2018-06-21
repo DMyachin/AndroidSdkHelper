@@ -3,10 +3,11 @@
 import os
 
 import android_sdk
+from android_sdk import PathLike
 
 
 class AndroidAapt(object):
-    def __init__(self, path: str) -> None:
+    def __init__(self, path: PathLike) -> None:
         self.__aapt = os.path.expanduser(os.path.expandvars(path))
 
 
