@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 import os
 
-import android_sdk
-from android_sdk import PathLike
+import remove_android_sdk
+from remove_android_sdk import PathLike
 
 
 class AndroidAapt(object):
@@ -13,5 +13,5 @@ class AndroidAapt(object):
 
 if __name__ == '__main__':
     test_sdk_path = '/home/umnik/Android/Sdk'
-    sdk = android_sdk.AndroidSdk(test_sdk_path, auto_set=['aapt'])
+    sdk = remove_android_sdk.AndroidSdk(test_sdk_path, auto_set=['aapt'])
     aapt = AndroidAapt(sdk.get_aapt())

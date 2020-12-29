@@ -7,8 +7,8 @@ import time
 from enum import Enum, unique
 from typing import Iterable
 
-import android_sdk
-from android_sdk import PathLike
+import remove_android_sdk
+from remove_android_sdk import PathLike
 
 
 @unique
@@ -850,7 +850,7 @@ class AndroidAdb(object):
 
 if __name__ == '__main__':
     test_sdk_path = '$ANDROID_HOME'
-    sdk = android_sdk.AndroidSdk(test_sdk_path, auto_set=['adb'])
+    sdk = remove_android_sdk.AndroidSdk(test_sdk_path, auto_set=['adb'])
     adb = AndroidAdb(sdk.get_adb())
     device = adb.get_devices()[0]
     print("Device:")
